@@ -1,6 +1,4 @@
-import os, json, requests, random, time, runpod
-from urllib.parse import urlsplit
-
+import os, random, time
 import torch
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler
 from tqdm import tqdm
@@ -35,27 +33,8 @@ with torch.inference_mode():
     pipeline = VideoPipeline(vae=vae, reference_net=reference_net, diffusion_net=diffusion_net, scheduler=noise_scheduler, image_proj=image_proj)
     pipeline.to(device=device, dtype=weight_dtype)
 
-def download_file(url, save_dir, file_name):
-    os.makedirs(save_dir, exist_ok=True)
-    file_suffix = os.path.splitext(urlsplit(url).path)[1]
-    file_name_with_suffix = file_name + file_suffix
-    file_path = os.path.join(save_dir, file_name_with_suffix)
-    response = requests.get(url)
-    response.raise_for_status()
-    with open(file_path, 'wb') as file:
-        file.write(response.content)
-    return file_path
-
 @torch.inference_mode()
-def generate(input):
-    values = input["input"]
-
-    input_image = values['input_image']
-    input_image = download_file(url=input_image, save_dir='/content', file_name='input_image')
-    input_audio = values['input_audio']
-    input_audio = download_file(url=input_audio, save_dir='/content', file_name='input_audio')
-    seed = values['seed']
-
+def generate(input_video, input_audio, seed):
     resolution = 512
     num_generated_frames_per_clip = 16
     fps = 30
@@ -70,7 +49,7 @@ def generate(input):
 
     generator = torch.manual_seed(seed)
     img_size = (resolution, resolution)
-    pixel_values, face_emb = preprocess_image(face_analysis_model="/content/memo/checkpoints/misc/face_analysis", image_path=input_image, image_size=resolution)
+    pixel_values, face_emb = preprocess_image(face_analysis_model="/content/memo/checkpoints/misc/face_analysis", image_path=input_video, image_size=resolution)
 
     output_dir = "/content/memo/outputs"
     os.makedirs(output_dir, exist_ok=True)
@@ -134,62 +113,27 @@ def generate(input):
     video_frames = video_frames.squeeze(0)
     video_frames = video_frames[:, :audio_length]
 
-    tensor_to_video(video_frames, f"/content/memo-{seed}-tost.mp4", input_audio, fps=fps)
+    video_path = f"/content/memo-{seed}-tost.mp4"
+    tensor_to_video(video_frames, video_path, input_audio, fps=fps)
 
-    result = f"/content/memo-{seed}-tost.mp4"
-    try:
-        notify_uri = values['notify_uri']
-        del values['notify_uri']
-        notify_token = values['notify_token']
-        del values['notify_token']
-        discord_id = values['discord_id']
-        del values['discord_id']
-        if(discord_id == "discord_id"):
-            discord_id = os.getenv('com_camenduru_discord_id')
-        discord_channel = values['discord_channel']
-        del values['discord_channel']
-        if(discord_channel == "discord_channel"):
-            discord_channel = os.getenv('com_camenduru_discord_channel')
-        discord_token = values['discord_token']
-        del values['discord_token']
-        if(discord_token == "discord_token"):
-            discord_token = os.getenv('com_camenduru_discord_token')
-        job_id = values['job_id']
-        del values['job_id']
-        default_filename = os.path.basename(result)
-        with open(result, "rb") as file:
-            files = {default_filename: file.read()}
-        payload = {"content": f"{json.dumps(values)} <@{discord_id}>"}
-        response = requests.post(
-            f"https://discord.com/api/v9/channels/{discord_channel}/messages",
-            data=payload,
-            headers={"Authorization": f"Bot {discord_token}"},
-            files=files
-        )
-        response.raise_for_status()
-        result_url = response.json()['attachments'][0]['url']
-        notify_payload = {"jobId": job_id, "result": result_url, "status": "DONE"}
-        web_notify_uri = os.getenv('com_camenduru_web_notify_uri')
-        web_notify_token = os.getenv('com_camenduru_web_notify_token')
-        if(notify_uri == "notify_uri"):
-            requests.post(web_notify_uri, data=json.dumps(notify_payload), headers={'Content-Type': 'application/json', "Authorization": web_notify_token})
-        else:
-            requests.post(web_notify_uri, data=json.dumps(notify_payload), headers={'Content-Type': 'application/json', "Authorization": web_notify_token})
-            requests.post(notify_uri, data=json.dumps(notify_payload), headers={'Content-Type': 'application/json', "Authorization": notify_token})
-        return {"jobId": job_id, "result": result_url, "status": "DONE"}
-    except Exception as e:
-        error_payload = {"jobId": job_id, "status": "FAILED"}
-        try:
-            if(notify_uri == "notify_uri"):
-                requests.post(web_notify_uri, data=json.dumps(error_payload), headers={'Content-Type': 'application/json', "Authorization": web_notify_token})
-            else:
-                requests.post(web_notify_uri, data=json.dumps(error_payload), headers={'Content-Type': 'application/json', "Authorization": web_notify_token})
-                requests.post(notify_uri, data=json.dumps(error_payload), headers={'Content-Type': 'application/json', "Authorization": notify_token})
-        except:
-            pass
-        return {"jobId": job_id, "result": f"FAILED: {str(e)}", "status": "FAILED"}
-    finally:
-        if os.path.exists(result):
-            os.remove(result)
+    return video_path
 
-runpod.serverless.start({"handler": generate})
+import gradio as gr
+
+with gr.Blocks(css=".gradio-container {max-width: 1080px !important}", analytics_enabled=False) as demo:
+    with gr.Row():
+        with gr.Column():
+            input_video = gr.Image(label="Upload Input Image", type="filepath")
+            input_audio = gr.Audio(label="Upload Input Audio", type="filepath")
+            seed = gr.Number(label="Seed (0 for Random)", value=0, precision=0)
+        with gr.Column():
+            video_output = gr.Video(label="Generated Video")
+            generate_button = gr.Button("Generate")
+
+    generate_button.click(
+        fn=generate,
+        inputs=[input_video, input_audio, seed],
+        outputs=[video_output],
+    )
+
+demo.queue().launch(inline=False, share=False, debug=True, server_name='0.0.0.0', server_port=7860, allowed_paths=["/content"])

@@ -28,7 +28,7 @@ RUN pip install torch==2.5.1+cu124 torchvision==0.20.1+cu124 torchaudio==2.5.1+c
     pip install opencv-contrib-python av runpod && \
     pip install accelerate==1.1.1 albumentations==1.4.21 audio-separator==0.24.1 black==23.12.1 diffusers==0.31.0 einops==0.8.0 ffmpeg-python==0.2.0 funasr==1.0.27 huggingface-hub==0.26.2 imageio==2.36.0 && \
     pip install imageio-ffmpeg==0.5.1 insightface==0.7.3 hydra-core==1.3.2 jax==0.4.35 mediapipe==0.10.18 modelscope==1.20.1 moviepy==1.0.3 numpy==1.26.4 omegaconf==2.3.0 onnxruntime-gpu==1.20.1 && \
-    pip install opencv-python-headless==4.10.0.84 pillow==10.4.0 scikit-learn==1.5.2 scipy==1.14.1 transformers==4.46.3 tqdm==4.67.1 matplotlib matplotlib-inline && \
+    pip install opencv-python-headless==4.10.0.84 pillow==10.4.0 scikit-learn==1.5.2 scipy==1.14.1 transformers==4.46.3 tqdm==4.67.1 matplotlib matplotlib-inline gradio && \
     git clone -b dev https://github.com/camenduru/memo /content/memo && \
     aria2c --console-log-level=error -c -x 16 -s 16 -k 1M https://huggingface.co/memoavatar/memo/raw/main/audio_proj/config.json -d /content/memo/checkpoints/audio_proj -o config.json && \
     aria2c --console-log-level=error -c -x 16 -s 16 -k 1M https://huggingface.co/memoavatar/memo/resolve/main/audio_proj/diffusion_pytorch_model.safetensors -d /content/memo/checkpoints/audio_proj -o diffusion_pytorch_model.safetensors && \
